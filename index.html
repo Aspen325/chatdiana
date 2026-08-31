@@ -1,0 +1,312 @@
+
+## How It Works
+
+ContentKeeper (installed via MDM) blocks `youtube.com` and `*.youtube.com` at the device level. The key loophole:
+**`youtube-nocookie.com` is a *separate registered domain***, not a subdomain of `youtube.com`. If ContentKeeper's
+blocklist uses `youtube.com` + `*.youtube.com`, the `youtube-nocookie.com` embed slips through.
+
+Your GitHub Pages site (`yourname.github.io`) acts as the "host page" — the browser navigates to *your* domain,
+and the video loads in an iframe from the non-blocked domain.
+
+---
+
+## Project Setup
+
+Create a new GitHub repo (e.g., `yt-bypass`), then add this single file:
+
+### `index.html`
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>📺 Stream</title>
+  <style>
+    /* ── Reset & Base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f0f0f;
+      color: #f1f1f1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1.5rem 1rem;
+    }
+
+    /* ── Header ── */
+    header {
+      text-align: center;
+      margin-bottom: 1.5rem;
+    }
+    header h1 {
+      font-size: 1.8rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    header p {
+      color: #888;
+      font-size: 0.9rem;
+      margin-top: 0.35rem;
+    }
+
+    /* ── Input Bar ── */
+    .input-row {
+      display: flex;
+      gap: 0.5rem;
+      width: 100%;
+      max-width: 640px;
+      margin-bottom: 1.25rem;
+    }
+    .input-row input {
+      flex: 1;
+      padding: 0.75rem 1rem;
+      border: 1px solid #333;
+      border-radius: 10px;
+      background: #1a1a1a;
+      color: #f1f1f1;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .input-row input:focus {
+      border-color: #ff4444;
+    }
+    .input-row input::placeholder { color: #555; }
+    .input-row button {
+      padding: 0.75rem 1.4rem;
+      border: none;
+      border-radius: 10px;
+      background: #ff4444;
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+      white-space: nowrap;
+    }
+    .input-row button:active {
+      transform: scale(0.96);
+      background: #e63e3e;
+    }
+
+    /* ── Player Container ── */
+    .player-wrap {
+      width: 100%;
+      max-width: 640px;
+      aspect-ratio: 16 / 9;
+      background: #000;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+      display: none;
+    }
+    .player-wrap.visible { display: block; }
+    .player-wrap iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+
+    /* ── Placeholder / Empty State ── */
+    .empty-state {
+      width: 100%;
+      max-width: 640px;
+      aspect-ratio: 16 / 9;
+      background: #1a1a1a;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+    .empty-state .icon { font-size: 3rem; opacity: 0.5; }
+    .empty-state p { color: #666; font-size: 0.9rem; }
+
+    /* ── Error toast ── */
+    .toast {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #b71c1c;
+      color: #fff;
+      padding: 0.7rem 1.2rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+    .toast.show { opacity: 1; }
+
+    /* ── Quick Links ── */
+    .quick-links {
+      margin-top: 1rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      justify-content: center;
+    }
+    .quick-links a {
+      padding: 0.5rem 0.9rem;
+      background: #222;
+      border-radius: 8px;
+      color: #ccc;
+      font-size: 0.8rem;
+      text-decoration: none;
+      border: 1px solid #333;
+      transition: background 0.15s;
+    }
+    .quick-links a:active { background: #333; }
+
+    /* ── Footer ── */
+    footer {
+      margin-top: auto;
+      padding-top: 2rem;
+      color: #444;
+      font-size: 0.75rem;
+      text-align: center;
+    }
+
+    /* ── Responsive tweaks for iPad ── */
+    @media (min-width: 768px) {
+      body { padding: 2rem 2rem; }
+      .input-row, .player-wrap, .empty-state { max-width: 800px; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>📺 Stream</h1>
+    <p>Paste a YouTube link or video ID to play</p>
+  </header>
+
+  <!-- Empty state -->
+  <div class="empty-state" id="emptyState">
+    <div class="icon">▶</div>
+    <p>Waiting for a video…</p>
+  </div>
+
+  <!-- Input -->
+  <div class="input-row">
+    <input
+      type="text"
+      id="urlInput"
+      placeholder="https://youtube.com/watch?v=…  or  just paste the ID"
+      autocomplete="off"
+      autocapitalize="off"
+    />
+    <button id="playBtn">Play</button>
+  </div>
+
+  <!-- Player -->
+  <div class="player-wrap" id="playerWrap">
+    <iframe id="player" allow="autoplay; encrypted-media; fullscreen"
+            allowfullscreen></iframe>
+  </div>
+
+  <!-- Quick-link chips (edit these to your favourite videos) -->
+  <div class="quick-links">
+    <a href="#" data-id="dQw4w9WgXcQ">Rick Roll</a>
+    <a href="#" data-id="9bZkp7q19f0">Gangnam Style</a>
+    <a href="#" data-id="kJQP7kiw5Fk">Despacito</a>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <footer>
+    Stream · works by loading embeds via <code>youtube-nocookie.com</code>
+  </footer>
+
+  <script>
+    const urlInput   = document.getElementById('urlInput');
+    const playBtn    = document.getElementById('playBtn');
+    const player     = document.getElementById('player');
+    const playerWrap = document.getElementById('playerWrap');
+    const emptyState = document.getElementById('emptyState');
+    const toast      = document.getElementById('toast');
+
+    // ── Extract a 11-char video ID from many YouTube URL formats ──
+    function extractId(raw) {
+      raw = raw.trim();
+
+      // Already a bare ID?
+      if (/^[a-zA-Z0-9_-]{11}$/.test(raw)) return raw;
+
+      // ?v= …&  or  &v= …
+      let m = raw.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
+      if (m) return m[1];
+
+      // /embed/ID
+      m = raw.match(/\/embed\/([a-zA-Z0-9_-]{11})/);
+      if (m) return m[1];
+
+      // /shorts/ID
+      m = raw.match(/\/shorts\/([a-zA-Z0-9_-]{11})/);
+      if (m) return m[1];
+
+      // /live/ID
+      m = raw.match(/\/live\/([a-zA-Z0-9_-]{11})/);
+      if (m) return m[1];
+
+      return null;
+    }
+
+    // ── Show a brief toast message ──
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    // ── Load the video ──
+    function loadVideo(id) {
+      emptyState.style.display = 'none';
+      playerWrap.classList.add('visible');
+
+      //  Primary:  youtube-nocookie.com  (separate domain, often not blocked)
+      //  Fallback handled below if it fails
+      player.src = `https://www.youtube-nocookie.com/embed/${id}?rel=0&modestbranding=1&playsinline=1`;
+
+      //  Fallback: if the nocookie domain IS blocked, try youtube.com/embed
+      player.onerror = () => {
+        player.src = `https://www.youtube.com/embed/${id}?rel=0&modestbranding=1&playsinline=1`;
+      };
+    }
+
+    function handleInput() {
+      const id = extractId(urlInput.value);
+      if (!id) {
+        showToast("Couldn't find a valid YouTube video ID in that.");
+        return;
+      }
+      loadVideo(id);
+      urlInput.value = '';
+      urlInput.blur();
+    }
+
+    playBtn.addEventListener('click', handleInput);
+    urlInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') handleInput();
+    });
+
+    // Quick-link chips
+    document.querySelectorAll('.quick-links a').forEach(a => {
+      a.addEventListener('click', e => {
+        e.preventDefault();
+        const id = a.dataset.id;
+        if (id) loadVideo(id);
+      });
+    });
+  </script>
+</body>
+</html>
+```
