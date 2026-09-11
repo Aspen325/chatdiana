@@ -190,8 +190,19 @@ async function join(raw){
   $('roomPill').textContent = 'room '+c;
   try {
     KEY = await deriveKey(c, ROOM);
-  } catch { return toast('WebCrypto unavailable'); }
-  await fetch('/api/rooms',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({roomId:ROOM})}).catch(()=>{});
+  } catch (e) { console.error(e); return toast('WebCrypto unavailable (needs HTTPS or localhost)'); }
+  // Don't enter chat if backend is unreachable — otherwise send just fails later.
+  try {
+    const r = await fetch('/api/rooms',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({roomId:ROOM})});
+    if (!r.ok) {
+      const t = await r.text().catch(()=> '');
+      console.error('POST /api/rooms', r.status, t);
+      return toast('Can\'t reach server (' + r.status + '). Check deployment, then retry.');
+    }
+  } catch (e) {
+    console.error('POST /api/rooms network error', e);
+    return toast('Can\'t reach server (network). Is the Railway service running? Open /api/health.');
+  }
   $('lobbyView').style.display='none'; $('chatView').style.display='flex';
   seen.clear(); lastTs=0; $('msgs').innerHTML='';
   clearInterval(pollT); pollT=setInterval(poll, 2500); poll();
@@ -218,6 +229,7 @@ async function poll(){
   if (!ROOM || !KEY) return;
   try {
     const r = await fetch('/api/rooms/'+ROOM+'/messages?since='+lastTs);
+    if (!r.ok) { console.error('poll', r.status); $('roomPill').textContent = 'room '+CODE+' (offline '+r.status+')'; return; }
     const j = await r.json();
     for (const m of (j.messages||[])) {
       if (seen.has(m.id)) continue; seen.add(m.id);
@@ -226,7 +238,7 @@ async function poll(){
       if (m.ts > lastTs) lastTs = m.ts;
       addMsg(p.from||'anon', p.text||'', m.ts, (p.from||'')===NICK);
     }
-  } catch {}
+  } catch (e) { console.error('poll network error', e); $('roomPill').textContent = 'room '+CODE+' (offline?)'; }
 }
 function addMsg(from, text, ts, mine){
   const d = document.createElement('div'); d.className='msg'+(mine?' mine':'');
@@ -304,16 +316,23 @@ $('sendBtn').onclick=send;
 async function send(){
   const text = secureMode?buf:sysInput.value;
   if (!text.trim()) return;
-  if (!KEY) return toast('Join a room first');
+  if (!KEY || !ROOM) return toast('Join a room first');
   if (text.length>2000) return toast('Too long (2000 max)');
   const payload = {v:1, from:NICK, text, ts:Date.now()};
   try {
     const {iv,data} = await enc(KEY, payload);
     const r = await fetch('/api/rooms/'+ROOM+'/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({iv,data})});
-    if (!r.ok) return toast('Send failed');
+    if (!r.ok) {
+      const t = await r.text().catch(()=> '');
+      console.error('send failed', r.status, t);
+      if (r.status === 400) return toast('Send rejected (400). Update frontend/backend.');
+      if (r.status === 429) return toast('Send failed (429 rate-limited). Wait 60s.');
+      if (r.status === 413) return toast('Send failed (413 too large). Shorten message.');
+      return toast('Send failed (' + r.status + '). Check deployment.');
+    }
     if (secureMode){ buf=''; renderBuf(); } else sysInput.value='';
     poll();
-  } catch { toast('Send failed'); }
+  } catch (e) { console.error('send network error', e); toast('Send failed (network). Open /api/health — if it fails, fix deployment.'); }
 }
 
 buildKbd(); renderBuf();
