@@ -143,7 +143,7 @@ function newCode(){
   let s = ''; for (let i=0;i<8;i++) s += ALPH[b[i]%ALPH.length];
   return s.slice(0,4)+'-'+s.slice(4);
 }
-function normCode(c){ return (c||'').toUpperCase().replace(/[^A-Z2-9]/g,'').replace(/^[OI01L]/,''); }
+function normCode(c){ return (c||'').toUpperCase().replace(/[^ABCDEFGHJKMNPQRSTUVWXYZ23456789]/g,''); }
 function fmtCode(c){ c = normCode(c); if (c.length!==8) return null; const s=c; return s.slice(0,4)+'-'+s.slice(4); }
 
 const te = new TextEncoder(), td = new TextDecoder();
@@ -184,9 +184,11 @@ async function join(raw){
   const c = fmtCode(raw);
   if (!c || !CODE_RE.test(c)) return toast('Enter a valid code like AB12-CD34');
   NICK = ($('nick').value.trim() || 'anon').slice(0,24);
-  sessionStorage.setItem('nick', NICK);
+  try { sessionStorage.setItem('nick', NICK); } catch {}
   CODE = c; location.hash = 'c='+c;
-  ROOM = await sha256hex(c);
+  try {
+    ROOM = await sha256hex(c);
+  } catch (e) { console.error(e); return toast('Crypto unavailable — open via HTTPS, not file://'); }
   $('roomPill').textContent = 'room '+c;
   try {
     KEY = await deriveKey(c, ROOM);
@@ -336,7 +338,7 @@ async function send(){
 }
 
 buildKbd(); renderBuf();
-$('nick').value = sessionStorage.getItem('nick')||'';
+try { $('nick').value = sessionStorage.getItem('nick')||''; } catch {}
 // auto-join from #c=CODE (fragment never sent to server)
 if (location.hash.startsWith('#c=')) {
   const c = decodeURIComponent(location.hash.slice(3));
