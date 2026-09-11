@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<title>Private Chat</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',sans-serif;
+    background:#101014;color:#f2f2f4;min-height:100dvh;
+    display:flex;flex-direction:column;align-items:center;
+    padding:env(safe-area-inset-top) 12px env(safe-area-inset-bottom);
+    touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+  }
+  .wrap{width:100%;max-width:760px;display:flex;flex-direction:column;min-height:100dvh}
+  header{text-align:center;padding:18px 0 10px}
+  header h1{font-size:1.4rem;letter-spacing:-.3px}
+  header p{color:#8e8e96;font-size:.85rem;margin-top:4px}
+  .card{background:#1a1a20;border:1px solid #2c2c34;border-radius:14px;padding:16px;margin:8px 0}
+  label{display:block;font-size:.8rem;color:#a7a7b0;margin:10px 0 6px}
+  input[type=text]{width:100%;padding:14px;font-size:1.05rem;border-radius:10px;border:1px solid #3a3a44;background:#0e0e12;color:#fff;outline:none}
+  input[type=text]:focus{border-color:#5b8cff}
+  .row{display:flex;gap:8px}
+  .row>*{flex:1}
+  button{font-family:inherit;touch-action:manipulation;user-select:none;-webkit-user-select:none;cursor:pointer}
+  .btn{padding:14px;border:none;border-radius:10px;background:#3b82f6;color:#fff;font-size:1rem;font-weight:700;min-height:52px}
+  .btn:active{transform:scale(.98);filter:brightness(1.1)}
+  .btn.secondary{background:#26262e;color:#e6e6ea;border:1px solid #383842}
+  .btn.danger{background:#3a1d1d;color:#ff9b9b;border:1px solid #5c2a2a}
+  .btn.small{min-height:44px;padding:10px;font-size:.9rem}
+  .code{font-family:ui-monospace,Menlo,monospace;font-size:1.5rem;letter-spacing:2px;text-align:center;background:#0e0e12;border:1px dashed #4a4a56;border-radius:10px;padding:12px;margin:10px 0;user-select:all}
+  /* chat */
+  #chatView{display:none;flex-direction:column;flex:1;min-height:0}
+  #lobbyView{display:block}
+  #metaBar{display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap}
+  #metaBar .pill{font-size:.78rem;background:#22222a;border:1px solid #34343e;border-radius:999px;padding:6px 10px;color:#c9c9d2}
+  #msgs{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;gap:8px;padding:6px 2px 10px;min-height:24dvh;max-height:38dvh}
+  .msg{background:#1c1c23;border:1px solid #2e2e38;border-radius:12px;padding:10px 12px;max-width:92%}
+  .msg.mine{align-self:flex-end;background:#1e2c4d;border-color:#33507e}
+  .msg .from{font-size:.72rem;color:#8fa8d8;margin-bottom:4px}
+  .msg .txt{font-size:1.02rem;line-height:1.45;white-space:pre-wrap;word-break:break-word}
+  .msg .ts{font-size:.68rem;color:#77778a;margin-top:5px;text-align:right}
+  /* composer */
+  #composer{background:#16161c;border:1px solid #2c2c35;border-radius:14px;padding:10px;margin-top:6px}
+  #preview{min-height:56px;background:#0d0d11;border:1px solid #33333d;border-radius:10px;padding:12px;font-size:1.08rem;line-height:1.5;white-space:pre-wrap;word-break:break-word;outline:none}
+  #preview:empty::before{content:attr(data-ph);color:#5b5b66}
+  #preview::after{content:'▍';color:#3b82f6;animation:blink 1s steps(1) infinite;margin-left:1px}
+  @keyframes blink{50%{opacity:0}}
+  #sysInput{display:none;width:100%;min-height:76px;background:#0d0d11;color:#fff;border:1px solid #33333d;border-radius:10px;padding:12px;font-size:1.08rem;font-family:inherit;resize:none}
+  #kbdToggle{display:flex;gap:8px;margin:8px 0}
+  #kbdToggle .btn{font-size:.85rem;min-height:40px;padding:8px}
+  #kbdToggle .btn[aria-pressed="true"]{outline:2px solid #3b82f6}
+  /* secure keyboard: pointerdown = fast, no keydown events emitted */
+  #kbd{user-select:none;-webkit-user-select:none;touch-action:manipulation}
+  #kbd.hidden{display:none}
+  .krow{display:flex;gap:6px;margin:6px 0}
+  .k{flex:1;min-height:60px;font-size:1.25rem;border-radius:10px;border:1px solid #3a3a46;background:#26262f;color:#fff;font-weight:600}
+  .k:active{background:#3b82f6;transform:scale(.96)}
+  .k.fn{flex:1.5;font-size:.95rem;background:#1e1e26}
+  .k.wide{flex:4;font-size:1rem}
+  .k.send{flex:1.8;background:#22a06b;border-color:#2c7a54}
+  footer{color:#6a6a76;font-size:.72rem;text-align:center;padding:14px 8px 8px;line-height:1.5;max-width:760px}
+  .toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:10px;font-size:.88rem;opacity:0;pointer-events:none;transition:opacity .2s;max-width:92vw;text-align:center}
+  .toast.show{opacity:1}
+  @media (min-width:768px){ .k{min-height:64px} #msgs{max-height:44dvh} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Private Chat</h1>
+    <p>End-to-end encrypted &middot; room-code access &middot; iPad optimized</p>
+  </header>
+
+  <!-- LOBBY -->
+  <div id="lobbyView">
+    <div class="card">
+      <label for="nick">Display name (stays on this device, sent only inside ciphertext)</label>
+      <input id="nick" type="text" placeholder="e.g. River" autocomplete="off" autocapitalize="off" maxlength="24" />
+      <label for="codeIn">Room code</label>
+      <input id="codeIn" type="text" placeholder="XXXX-XXXX" autocomplete="off" autocapitalize="characters" spellcheck="false" />
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="joinBtn">Join</button>
+        <button class="btn secondary" id="newBtn">New chat</button>
+      </div>
+      <p style="color:#8e8e96;font-size:.78rem;margin-top:10px;line-height:1.5">
+        Share the code out-of-band. Anyone with the code can read + write + delete.
+        Code lives in the URL hash (<code>#c=…</code>) so it never hits server logs.
+      </p>
+    </div>
+  </div>
+
+  <!-- CHAT -->
+  <div id="chatView">
+    <div id="metaBar">
+      <span class="pill" id="roomPill">room …</span>
+      <button class="btn secondary small" id="copyBtn" style="flex:0 0 auto">Copy code</button>
+      <button class="btn secondary small" id="shareBtn" style="flex:0 0 auto">Share</button>
+      <button class="btn secondary small" id="leaveBtn" style="flex:0 0 auto">Leave</button>
+      <button class="btn danger small" id="delBtn" style="flex:0 0 auto">Delete</button>
+    </div>
+    <div id="msgs" aria-live="polite"></div>
+    <div id="composer">
+      <div id="preview" data-ph="Tap secure keys below…" role="textbox" aria-label="Message preview" tabindex="0"></div>
+      <textarea id="sysInput" placeholder="Type with system keyboard…" rows="3"></textarea>
+      <div id="kbdToggle" role="group" aria-label="Keyboard mode">
+        <button class="btn secondary" id="secureTab" aria-pressed="true">Secure keys</button>
+        <button class="btn secondary" id="sysTab" aria-pressed="false">System keyboard</button>
+        <button class="btn" id="sendBtn">Send</button>
+      </div>
+      <!-- Custom keyboard emits pointerdown only: commodity JS keyloggers
+           listening for keydown/keypress/input on document never fire,
+           and iOS third-party keyboards never open. Does NOT stop OS-level
+           loggers, MDM, or malicious JS on this page. -->
+      <div id="kbd" aria-label="Secure keyboard"></div>
+    </div>
+  </div>
+
+  <footer>
+    E2EE: AES-GCM-256, key = PBKDF2-SHA256(100k, code, salt=SHA256(code)).
+    Server stores only <code>{iv, data}</code>. No accounts, no analytics.
+    Railway edge + TLS still sees IPs — true zero-log is not possible on hosted infra.
+    Secure-keys mode avoids <code>keydown</code> events + system keyboards, but cannot stop OS/MDM capture.
+  </footer>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const toastEl = $('toast');
+function toast(m){ toastEl.textContent = m; toastEl.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(()=>toastEl.classList.remove('show'), 2200); }
+
+const CODE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}$/;
+const ALPH = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
+function newCode(){
+  const b = new Uint8Array(8); crypto.getRandomValues(b);
+  let s = ''; for (let i=0;i<8;i++) s += ALPH[b[i]%ALPH.length];
+  return s.slice(0,4)+'-'+s.slice(4);
+}
+function normCode(c){ return (c||'').toUpperCase().replace(/[^A-Z2-9]/g,'').replace(/^[OI01L]/,''); }
+function fmtCode(c){ c = normCode(c); if (c.length!==8) return null; const s=c; return s.slice(0,4)+'-'+s.slice(4); }
+
+const te = new TextEncoder(), td = new TextDecoder();
+function b64e(buf){ const b=new Uint8Array(buf); let s=''; for(let i=0;i<b.length;i++) s+=String.fromCharCode(b[i]); return btoa(s); }
+function b64d(s){ const bin=atob(s); const b=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) b[i]=bin.charCodeAt(i); return b.buffer; }
+async function sha256hex(str){
+  const h = await crypto.subtle.digest('SHA-256', te.encode(str));
+  return [...new Uint8Array(h)].map(x=>x.toString(16).padStart(2,'0')).join('');
+}
+async function deriveKey(code, roomIdHex){
+  const salt = new Uint8Array(roomIdHex.match(/../g).map(h=>parseInt(h,16)));
+  const base = await crypto.subtle.importKey('raw', te.encode(code), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2', salt, iterations:100000, hash:'SHA-256'}, base, {name:'AES-GCM', length:256}, false, ['encrypt','decrypt']);
+}
+async function enc(key, obj){
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({name:'AES-GCM', iv}, key, te.encode(JSON.stringify(obj)));
+  return { iv: b64e(iv.buffer), data: b64e(ct) };
+}
+async function dec(key, ivB64, dataB64){
+  try {
+    const pt = await crypto.subtle.decrypt({name:'AES-GCM', iv:new Uint8Array(b64d(ivB64))}, key, b64d(dataB64));
+    return JSON.parse(td.decode(pt));
+  } catch { return null; }
+}
+
+// state
+let CODE=null, ROOM=null, KEY=null, NICK='anon', lastTs=0, pollT=null, seen=new Set();
+
+// lobby
+$('newBtn').onclick = async () => {
+  const c = newCode();
+  $('codeIn').value = c;
+  join(c);
+};
+$('joinBtn').onclick = () => join($('codeIn').value);
+async function join(raw){
+  const c = fmtCode(raw);
+  if (!c || !CODE_RE.test(c)) return toast('Enter a valid code like AB12-CD34');
+  NICK = ($('nick').value.trim() || 'anon').slice(0,24);
+  sessionStorage.setItem('nick', NICK);
+  CODE = c; location.hash = 'c='+c;
+  ROOM = await sha256hex(c);
+  $('roomPill').textContent = 'room '+c;
+  try {
+    KEY = await deriveKey(c, ROOM);
+  } catch { return toast('WebCrypto unavailable'); }
+  await fetch('/api/rooms',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({roomId:ROOM})}).catch(()=>{});
+  $('lobbyView').style.display='none'; $('chatView').style.display='flex';
+  seen.clear(); lastTs=0; $('msgs').innerHTML='';
+  clearInterval(pollT); pollT=setInterval(poll, 2500); poll();
+}
+function leave(){
+  clearInterval(pollT); CODE=ROOM=KEY=null; location.hash='';
+  $('chatView').style.display='none'; $('lobbyView').style.display='block';
+}
+$('leaveBtn').onclick = leave;
+$('copyBtn').onclick = async () => { try{ await navigator.clipboard.writeText(CODE); toast('Code copied'); }catch{ toast(CODE); } };
+$('shareBtn').onclick = async () => {
+  const url = location.origin+location.pathname+'#c='+CODE;
+  const data = {title:'Join chat', text:'Room code '+CODE, url};
+  if (navigator.share) { try{ await navigator.share(data); }catch{} }
+  else { try{ await navigator.clipboard.writeText(url); toast('Link copied'); }catch{ toast(CODE); } }
+};
+$('delBtn').onclick = async () => {
+  if (!confirm('Delete this chat for everyone?')) return;
+  await fetch('/api/rooms/'+ROOM,{method:'DELETE'}).catch(()=>{});
+  $('msgs').innerHTML=''; lastTs=0; toast('Deleted');
+};
+
+async function poll(){
+  if (!ROOM || !KEY) return;
+  try {
+    const r = await fetch('/api/rooms/'+ROOM+'/messages?since='+lastTs);
+    const j = await r.json();
+    for (const m of (j.messages||[])) {
+      if (seen.has(m.id)) continue; seen.add(m.id);
+      const p = await dec(KEY, m.iv, m.data);
+      if (!p) continue;
+      if (m.ts > lastTs) lastTs = m.ts;
+      addMsg(p.from||'anon', p.text||'', m.ts, (p.from||'')===NICK);
+    }
+  } catch {}
+}
+function addMsg(from, text, ts, mine){
+  const d = document.createElement('div'); d.className='msg'+(mine?' mine':'');
+  const f = document.createElement('div'); f.className='from'; f.textContent=from;
+  const t = document.createElement('div'); t.className='txt'; t.textContent=text;
+  const s = document.createElement('div'); s.className='ts'; s.textContent=new Date(ts).toLocaleString();
+  d.append(f,t,s); $('msgs').append(d); d.scrollIntoView({block:'nearest'});
+}
+
+// ---- composer: secure buffer (no <input>), pointerdown only ----
+let buf='';
+let caps=false, numMode=false;
+const preview=$('preview'), sysInput=$('sysInput'), kbd=$('kbd');
+let secureMode=true;
+function renderBuf(){ preview.textContent = buf; }
+preview.addEventListener('click', ()=>{ if(!secureMode) sysInput.focus(); });
+
+const ROWS_ABC=[['Q','W','E','R','T','Y','U','I','O','P'],['A','S','D','F','G','H','J','K','L'],['⇧','Z','X','C','V','B','N','M','⌫'],['?123',' ','⏎','Send']];
+const ROWS_NUM=[['1','2','3','4','5','6','7','8','9','0'],['-','/',':',';','(',')','$','&','@','"'],['#+=','.',',','?','!','’','⌫'],['ABC',' ','⏎','Send']];
+
+function buildKbd(){
+  kbd.innerHTML='';
+  const rows = numMode?ROWS_NUM:ROWS_ABC;
+  for (const row of rows){
+    const dr=document.createElement('div'); dr.className='krow';
+    for (const k of row){
+      const b=document.createElement('button'); b.type='button';
+      let label=k, cls='k';
+      if (k===' ') {label='space'; cls+=' wide';}
+      if (k==='Send') cls+=' send';
+      if (['⇧','⌫','?123','ABC','#+=','⏎'].includes(k)) cls+=' fn';
+      b.className=cls; b.textContent = k===' '?'space':k;
+      b.setAttribute('aria-label', k===' '?'space':k==='⌫'?'backspace':k==='⏎'?'new line':k);
+      // pointerdown = immediate on iPad, no click delay; no keydown involved
+      b.addEventListener('pointerdown', e=>{ e.preventDefault(); press(k); }, {passive:false});
+      dr.append(b);
+    }
+    kbd.append(dr);
+  }
+}
+function press(k){
+  if (k==='⌫'){ buf=buf.slice(0,-1); renderBuf(); repeatStart(); return; }
+  if (k==='⇧'){ caps=!caps; toast(caps?'Caps on':'Caps off'); return; }
+  if (k==='?123'){ numMode=true; buildKbd(); return; }
+  if (k==='ABC'||k==='#+='){ numMode=false; buildKbd(); return; }
+  if (k==='⏎'){ buf+='\n'; renderBuf(); return; }
+  if (k==='Send'){ send(); return; }
+  if (k===' '){ buf+=' '; renderBuf(); return; }
+  let ch=k;
+  if (!numMode && !caps) ch=ch.toLowerCase();
+  buf+=ch; if(caps){caps=false;}
+  renderBuf();
+}
+// hold-backspace repeat
+let repT=null, repI=null;
+function repeatStart(){
+  clearTimeout(repT); clearInterval(repI);
+  repT=setTimeout(()=>{ repI=setInterval(()=>{ buf=buf.slice(0,-1); renderBuf(); },55); },380);
+}
+document.addEventListener('pointerup', ()=>{ clearTimeout(repT); clearInterval(repI); });
+
+function setMode(secure){
+  secureMode=secure;
+  $('secureTab').setAttribute('aria-pressed', secure);
+  $('sysTab').setAttribute('aria-pressed', !secure);
+  preview.style.display = secure?'block':'none';
+  kbd.classList.toggle('hidden', !secure);
+  sysInput.style.display = secure?'none':'block';
+  if (!secure) sysInput.focus();
+}
+$('secureTab').onclick=()=>setMode(true);
+$('sysTab').onclick=()=>setMode(false);
+
+$('sendBtn').onclick=send;
+async function send(){
+  const text = secureMode?buf:sysInput.value;
+  if (!text.trim()) return;
+  if (!KEY) return toast('Join a room first');
+  if (text.length>2000) return toast('Too long (2000 max)');
+  const payload = {v:1, from:NICK, text, ts:Date.now()};
+  try {
+    const {iv,data} = await enc(KEY, payload);
+    const r = await fetch('/api/rooms/'+ROOM+'/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({iv,data})});
+    if (!r.ok) return toast('Send failed');
+    if (secureMode){ buf=''; renderBuf(); } else sysInput.value='';
+    poll();
+  } catch { toast('Send failed'); }
+}
+
+buildKbd(); renderBuf();
+$('nick').value = sessionStorage.getItem('nick')||'';
+// auto-join from #c=CODE (fragment never sent to server)
+if (location.hash.startsWith('#c=')) {
+  const c = decodeURIComponent(location.hash.slice(3));
+  $('codeIn').value = c; join(c);
+}
+</script>
+</body>
+</html>
